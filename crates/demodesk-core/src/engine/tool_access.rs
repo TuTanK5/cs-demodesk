@@ -7,9 +7,9 @@ use std::time::Duration;
 
 #[derive(Default)]
 struct State {
-    users: [usize; 3],
-    waiting: [usize; 3],
-    replacing: [bool; 3],
+    users: [usize; 4],
+    waiting: [usize; 4],
+    replacing: [bool; 4],
 }
 
 #[derive(Default)]
@@ -22,7 +22,8 @@ fn index(tool: SetupTool) -> usize {
     match tool {
         SetupTool::Hlae => 0,
         SetupTool::Ffmpeg => 1,
-        SetupTool::Vrf => 2,
+        SetupTool::FfmpegAmd => 2,
+        SetupTool::Vrf => 3,
     }
 }
 

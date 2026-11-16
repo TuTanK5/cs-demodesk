@@ -285,7 +285,8 @@ last run remains available under tools.ffmpeg.lastCheck.encoding in shareable
 diagnostics, with its timestamp and the existing path redaction. Opening or
 copying diagnostics does not rerun encoding.
 
-The six probes are libx264, libx265, libsvtav1, h264_nvenc, hevc_nvenc and av1_nvenc.
+The nine probes are libx264, libx265, libsvtav1, h264_nvenc, hevc_nvenc, av1_nvenc,
+h264_amf, hevc_amf and av1_amf.
 Each encodes four synthetic 256x256 frames plus short stereo WAV input to MP4/AAC;
 ffprobe then checks the expected codec, four video frames and nonempty AAC audio.
 Temporary files are removed afterwards. No real Demo, recording or output file

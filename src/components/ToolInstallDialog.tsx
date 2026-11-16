@@ -6,7 +6,7 @@ import { api, errorText, type SettingsResponse } from '../api.ts';
 import { Spinner } from './Spinner.tsx';
 import { useNotify } from './Notifications.tsx';
 
-const labels = { hlae: 'HLAE', ffmpeg: 'FFmpeg', vrf: 'Source 2 Viewer CLI' };
+const labels = { hlae: 'HLAE', ffmpeg: 'FFmpeg', ffmpegAmd: 'FFmpeg (AMD)', vrf: 'Source 2 Viewer CLI' };
 const phases: Record<string, 'verify' | 'extract' | 'wait' | 'replace'> = {
   'Verifying download': 'verify',
   'Extracting verified download': 'extract',

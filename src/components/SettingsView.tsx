@@ -22,7 +22,7 @@ const toolDirectory = (value?: string | null) => {
     while (ancestor) {
       const separator = Math.max(ancestor.lastIndexOf('/'), ancestor.lastIndexOf('\\'));
       if (separator < 0) break;
-      if (ancestor.slice(separator + 1).toLowerCase() === tool) {
+      if (ancestor.slice(separator + 1).toLowerCase() === tool || (tool === 'ffmpeg' && ancestor.slice(separator + 1).toLowerCase() === 'ffmpeg-amd')) {
         return ancestor.slice(0, separator === 2 && ancestor[1] === ':' ? 3 : separator);
       }
       ancestor = ancestor.slice(0, separator);
@@ -141,7 +141,8 @@ const SOURCES = {
   steam: { site: 'official' as const, repo: 'Steam', url: 'https://store.steampowered.com/about/' },
   cs2: { site: 'steam' as const, repo: 'Counter-Strike 2', url: 'https://store.steampowered.com/app/730/' },
   hlae: { repo: 'advancedfx/advancedfx', url: 'https://github.com/advancedfx/advancedfx/releases' },
-  ffmpeg: { repo: 'noih/cs-demodesk-ffmpeg (win64 gpl-shared)', url: 'https://github.com/noih/cs-demodesk-ffmpeg' },
+  ffmpeg: { repo: 'TuTanK5/cs-demodesk-ffmpeg (generic)', url: 'https://github.com/TuTanK5/cs-demodesk-ffmpeg/releases/tag/N-128915-g3d16b774d7-e9c180c0' },
+  ffmpegAmd: { repo: 'TuTanK5/cs-demodesk-ffmpeg (AMD)', url: 'https://github.com/TuTanK5/cs-demodesk-ffmpeg/releases/tag/N-128915-g3d16b774d7-e9c180c0' },
   vrf: { repo: 'ValveResourceFormat/ValveResourceFormat', url: 'https://github.com/ValveResourceFormat/ValveResourceFormat/releases' },
 };
 
@@ -174,8 +175,8 @@ export function SettingsView({ onChanged, toolsRequest = 0, toolsTarget = 'rende
   const loaded = data !== undefined;
   const guidePhase = data && JSON.stringify([
     data.doctor.paths.steamDir, data.doctor.paths.cs2Exe, data.doctor.paths.hlaeExe,
-    data.doctor.paths.hlaeDll, data.doctor.paths.ffmpegExe, data.doctor.paths.vrfExe,
-    ...(['hlae', 'ffmpeg', 'vrf'] as const).map(tool => [Boolean(data.setup[tool]?.running), Boolean(data.setup[tool]?.progress)]),
+    data.doctor.paths.hlaeDll, data.doctor.paths.ffmpegExe, data.doctor.paths.ffmpegAmdExe, data.doctor.paths.vrfExe,
+    ...(['hlae', 'ffmpeg', 'ffmpegAmd', 'vrf'] as const).map(tool => [Boolean(data.setup[tool]?.running), Boolean(data.setup[tool]?.progress)]),
   ]);
   useEffect(() => {
     if (!toolsRequest || toolsRequest === dismissedRequest.current || !loaded || !toolsRef.current) return;
@@ -203,14 +204,14 @@ export function SettingsView({ onChanged, toolsRequest = 0, toolsTarget = 'rende
     const frame = requestAnimationFrame(() => guide.refresh());
     return () => { refreshing = true; cancelAnimationFrame(frame); guide.destroy(); toolGuide.current = null; };
   }, [toolsRequest, toolsTarget, loaded, guidePhase, t]);
-  const [form, setForm] = useState<Settings>({ language: null, cs2Dir: null, steamDir: null, replayFolders: [], scanGameReplays: true, hlaeExe: null, ffmpegExe: null, vrfExe: null });
+  const [form, setForm] = useState<Settings>({ language: null, cs2Dir: null, steamDir: null, replayFolders: [], scanGameReplays: true, hlaeExe: null, ffmpegExe: null, ffmpegAmdExe: null, vrfExe: null });
   const [dataDirOverride, setDataDirOverride] = useState('');
   const [saving, setSaving] = useState(false);
   const [pendingSave, setPendingSave] = useState<{ settings: Settings; original: Settings; target: string }>();
-  const downloadSelections = useRef<Partial<Record<'hlae' | 'ffmpeg' | 'vrf', string | null>>>({});
+  const downloadSelections = useRef<Partial<Record<'hlae' | 'ffmpeg' | 'ffmpegAmd' | 'vrf', string | null>>>({});
   const [message, setMessage] = useState<{ ok: boolean; text: string }>();
-  const [logTool, setLogTool] = useState<'hlae' | 'ffmpeg' | 'vrf'>();
-  const [updates, setUpdates] = useState<Partial<Record<'hlae' | 'ffmpeg' | 'vrf', ToolUpdate | { error: string }>>>({});
+  const [logTool, setLogTool] = useState<'hlae' | 'ffmpeg' | 'ffmpegAmd' | 'vrf'>();
+  const [updates, setUpdates] = useState<Partial<Record<'hlae' | 'ffmpeg' | 'ffmpegAmd' | 'vrf', ToolUpdate | { error: string }>>>({});
   const [checkingUpdates, setCheckingUpdates] = useState(false);
 
   const load = useCallback(async () => {
@@ -235,7 +236,7 @@ export function SettingsView({ onChanged, toolsRequest = 0, toolsTarget = 'rende
           setUpdates(current => ({ ...current, [ev.tool]: undefined }));
           void load().then(r => {
             if (!ev.ok && !ev.installed) return;
-            const field = ({ hlae: 'hlaeExe', ffmpeg: 'ffmpegExe', vrf: 'vrfExe' } as const)[ev.tool];
+            const field = ({ hlae: 'hlaeExe', ffmpeg: 'ffmpegExe', ffmpegAmd: 'ffmpegAmdExe', vrf: 'vrfExe' } as const)[ev.tool];
             setForm(current => current[field] === downloadSelections.current[ev.tool] ? ({ ...current, [field]: r.settings[field] }) : current);
           }).catch(e => setMessage({ ok: false, text: errorText(e) }));
           setMessage(ev.cancelled ? { ok: true, text: i18n.t('renders.status.cancelled') } : ev.ok ? { ok: true, text: i18n.t('settings.downloadDone') } : { ok: false, text: i18n.t('settings.downloadFailed', { error: ev.error ?? i18n.t('settings.unknownError') }) });
@@ -265,7 +266,7 @@ export function SettingsView({ onChanged, toolsRequest = 0, toolsTarget = 'rende
       // t() is still bound to the old language here; say it in the one just saved
       setMessage({ ok: true, text: t('settings.saved', { lng: r.settings.language ?? detectLanguage() }) });
       await onChanged();
-      if ((['steamDir', 'cs2Dir', 'hlaeExe', 'ffmpegExe', 'vrfExe'] as const).some(key => r.settings[key] !== data.settings[key])) {
+      if ((['steamDir', 'cs2Dir', 'hlaeExe', 'ffmpegExe', 'ffmpegAmdExe', 'vrfExe'] as const).some(key => r.settings[key] !== data.settings[key])) {
         setChecking(true);
         setData(await api.checkTools());
       }
@@ -293,8 +294,8 @@ export function SettingsView({ onChanged, toolsRequest = 0, toolsTarget = 'rende
         : { ok: false, text: t('settings.envNotReady', { problems: r.doctor.problems.map(translateProblem).join('; ') }) });
       setCheckingUpdates(true);
       const paths = r.doctor.paths;
-      const installed = { hlae: Boolean(paths.hlaeExe && paths.hlaeDll), ffmpeg: Boolean(paths.ffmpegExe), vrf: Boolean(paths.vrfExe) };
-      const tools = (['hlae', 'ffmpeg', 'vrf'] as const).filter(tool => installed[tool]);
+      const installed = { hlae: Boolean(paths.hlaeExe && paths.hlaeDll), ffmpeg: Boolean(paths.ffmpegExe), ffmpegAmd: Boolean(paths.ffmpegAmdExe), vrf: Boolean(paths.vrfExe) };
+      const tools = (['hlae', 'ffmpeg', 'ffmpegAmd', 'vrf'] as const).filter(tool => installed[tool]);
       const results = await Promise.all(tools.map(tool => api.checkToolUpdate(tool).catch(error => ({ error: errorText(error) }))));
       setUpdates(Object.fromEntries(tools.map((tool, index) => [tool, results[index]])));
       await onChanged();
@@ -305,7 +306,7 @@ export function SettingsView({ onChanged, toolsRequest = 0, toolsTarget = 'rende
       setChecking(false);
     }
   };
-  const updateNote = (tool: 'hlae' | 'ffmpeg' | 'vrf') => {
+  const updateNote = (tool: 'hlae' | 'ffmpeg' | 'ffmpegAmd' | 'vrf') => {
     const result = updates[tool];
     if (!result) return checkingUpdates && ready[tool] ? <Flex justify="center" align="center" mt="2" style={{ minHeight: 'calc(2 * var(--line-height-1))' }}><Spinner size="1" /></Flex> : undefined;
     if ('error' in result) return <Text as="div" size="1" color="red" mt="1">{t('settings.updateCheckFailed', { error: result.error })}</Text>;
@@ -341,11 +342,11 @@ export function SettingsView({ onChanged, toolsRequest = 0, toolsTarget = 'rende
     }
   };
   // Always a fresh download: the same button re-installs after a CS2 update breaks HLAE.
-  const runSetup = async (tool: 'hlae' | 'ffmpeg' | 'vrf') => {
+  const runSetup = async (tool: 'hlae' | 'ffmpeg' | 'ffmpegAmd' | 'vrf') => {
     setMessage(undefined);
     setData(current => current && ({ ...current, setup: { ...current.setup, [tool]: { running: true, progress: null, log: [] } } }));
     try {
-      const field = ({ hlae: 'hlaeExe', ffmpeg: 'ffmpegExe', vrf: 'vrfExe' } as const)[tool];
+      const field = ({ hlae: 'hlaeExe', ffmpeg: 'ffmpegExe', ffmpegAmd: 'ffmpegAmdExe', vrf: 'vrfExe' } as const)[tool];
       downloadSelections.current[tool] = form[field];
       await api.runSetup(tool, true, toolDirectory(form[field]) || null);
       await load();
@@ -358,9 +359,9 @@ export function SettingsView({ onChanged, toolsRequest = 0, toolsTarget = 'rende
   if (!data) return <Text color="gray">{message?.text ?? t('settings.loading')}</Text>;
   const d = data.doctor;
   const toolsReady = toolsInstalled(d.paths);
-  const ready = { steam: Boolean(d.paths.steamDir), cs2: Boolean(d.paths.cs2Exe), hlae: Boolean(d.paths.hlaeExe && d.paths.hlaeDll), ffmpeg: Boolean(d.paths.ffmpegExe), vrf: Boolean(d.paths.vrfExe) };
-  const toolReadiness = (tool: 'hlae' | 'ffmpeg' | 'vrf') => {
-    const field = ({hlae: 'hlaeExe', ffmpeg: 'ffmpegExe', vrf: 'vrfExe'} as const)[tool];
+  const ready = { steam: Boolean(d.paths.steamDir), cs2: Boolean(d.paths.cs2Exe), hlae: Boolean(d.paths.hlaeExe && d.paths.hlaeDll), ffmpeg: Boolean(d.paths.ffmpegExe), ffmpegAmd: Boolean(d.paths.ffmpegAmdExe), vrf: Boolean(d.paths.vrfExe) };
+  const toolReadiness = (tool: 'hlae' | 'ffmpeg' | 'ffmpegAmd' | 'vrf') => {
+    const field = ({hlae: 'hlaeExe', ffmpeg: 'ffmpegExe', ffmpegAmd: 'ffmpegAmdExe', vrf: 'vrfExe'} as const)[tool];
     if ((form[field] ?? '') !== (data.settings[field] ?? '')) return {};
     if (!ready[tool]) return {checked: false};
     if (checking && !checkingUpdates) return {status: t('settings.verifying')};
@@ -368,8 +369,8 @@ export function SettingsView({ onChanged, toolsRequest = 0, toolsTarget = 'rende
     if (!result) return {status: t('settings.unverified')};
     return {checked: result.ok, status: result.ok ? t('settings.ready') : t('settings.startupFailed')};
   };
-  const guidedTools = (toolsTarget === 'render' ? ['steam', 'cs2', 'hlae', 'ffmpeg'] as const : ['vrf'] as const).filter(tool => !ready[tool]);
-  const toolButton = (tool: 'steam' | 'cs2' | 'hlae' | 'ffmpeg' | 'vrf', label: string) => {
+  const guidedTools = (toolsTarget === 'render' ? ['steam', 'cs2', 'hlae', 'ffmpeg', 'ffmpegAmd'] as const : ['vrf'] as const).filter(tool => !ready[tool]);
+  const toolButton = (tool: 'steam' | 'cs2' | 'hlae' | 'ffmpeg' | 'ffmpegAmd' | 'vrf', label: string) => {
     const setup = tool === 'steam' || tool === 'cs2' ? undefined : data.setup[tool];
     const openLog = () => { toolGuide.current?.destroy(); if (tool !== 'steam' && tool !== 'cs2') setLogTool(tool); };
     const logGuide = { 'data-guide-missing': guidedTools.includes(tool) && Boolean(setup?.running), 'data-guide-downloading': true, 'data-tool-label': label };
@@ -568,6 +569,7 @@ export function SettingsView({ onChanged, toolsRequest = 0, toolsTarget = 'rende
               <Flex direction="column" gap="3">
                 <PathField description={t('settings.hlaePurpose')} note={updateNote('hlae')} action={toolButton('hlae', 'HLAE')} source={SOURCES.hlae} {...toolReadiness('hlae')} label="HLAE" value={toolDirectory(form.hlaeExe)} detectedPath={(form.hlaeExe ?? '') === (data.settings.hlaeExe ?? '') ? toolDirectory(d.paths.hlaeExe) : null} placeholder={`${data.dataDir}/tools`} onChange={(v) => set({ hlaeExe: v || null })} pick={{ directory: true }} />
                 <PathField description={t('settings.ffmpegPurpose')} note={updateNote('ffmpeg')} action={toolButton('ffmpeg', 'FFmpeg')} source={SOURCES.ffmpeg} {...toolReadiness('ffmpeg')} label="FFmpeg" value={toolDirectory(form.ffmpegExe)} detectedPath={(form.ffmpegExe ?? '') === (data.settings.ffmpegExe ?? '') ? toolDirectory(d.paths.ffmpegExe) : null} placeholder={`${data.dataDir}/tools`} onChange={(v) => set({ ffmpegExe: v || null })} pick={{ directory: true }} />
+                <PathField description="AMD AMF encoder build" note={updateNote('ffmpegAmd')} action={toolButton('ffmpegAmd', 'FFmpeg (AMD)')} source={SOURCES.ffmpegAmd} {...toolReadiness('ffmpegAmd')} label="FFmpeg (AMD)" value={toolDirectory(form.ffmpegAmdExe)} detectedPath={(form.ffmpegAmdExe ?? '') === (data.settings.ffmpegAmdExe ?? '') ? toolDirectory(d.paths.ffmpegAmdExe) : null} placeholder={`${data.dataDir}/tools`} onChange={(v) => set({ ffmpegAmdExe: v || null })} pick={{ directory: true }} />
               </Flex>
               <PathField description={t('settings.vrfPurpose')} note={updateNote('vrf')} action={toolButton('vrf', 'Source 2 Viewer CLI')} source={SOURCES.vrf} {...toolReadiness('vrf')} label="Source 2 Viewer CLI" value={toolDirectory(form.vrfExe)} detectedPath={(form.vrfExe ?? '') === (data.settings.vrfExe ?? '') ? toolDirectory(d.paths.vrfExe) : null} placeholder={`${data.dataDir}/tools`} onChange={(v) => set({ vrfExe: v || null })} pick={{ directory: true }} />
               <Flex gap="2" wrap="wrap" align="center" justify="center">

@@ -16,6 +16,7 @@ pub struct ToolPaths {
     pub hlae_exe: Option<PathBuf>,
     pub hlae_dll: Option<PathBuf>,
     pub ffmpeg_exe: Option<PathBuf>,
+    pub ffmpeg_amd_exe: Option<PathBuf>,
     /// Source2Viewer-CLI, used by the 2D replay to pull radar images out of the game files
     pub vrf_exe: Option<PathBuf>,
 }
@@ -27,6 +28,7 @@ pub struct PathOverrides {
     pub cs2_dir: Option<PathBuf>,
     pub hlae_exe: Option<PathBuf>,
     pub ffmpeg_exe: Option<PathBuf>,
+    pub ffmpeg_amd_exe: Option<PathBuf>,
     pub vrf_exe: Option<PathBuf>,
 }
 
@@ -170,7 +172,7 @@ pub fn installation_directory(path: &Path) -> PathBuf {
                 if ancestor
                     .file_name()
                     .and_then(|name| name.to_str())
-                    .is_some_and(|name| name.eq_ignore_ascii_case(tool))
+                    .is_some_and(|name| name.eq_ignore_ascii_case(tool) || (tool == "ffmpeg" && name.eq_ignore_ascii_case("ffmpeg-amd")))
                 {
                     return ancestor.parent().unwrap_or(ancestor).to_path_buf();
                 }
@@ -233,6 +235,13 @@ pub fn resolve_tool_paths(tools_dir: &Path, o: &PathOverrides) -> ToolPaths {
         None => find_file(&tools_dir.join("ffmpeg"), ffmpeg_name, 4)
             .or_else(|| find_on_path(ffmpeg_name)),
     };
+    let ffmpeg_amd_exe = match &o.ffmpeg_amd_exe {
+        Some(path) => selected_executable(
+            &if path.is_file() { path.clone() } else { path.join("ffmpeg") },
+            ffmpeg_name,
+        ),
+        None => find_file(&tools_dir.join("ffmpeg-amd"), ffmpeg_name, 4),
+    };
     let vrf_exe = match &o.vrf_exe {
         Some(path) => selected_executable(
             &if path.is_file() {
@@ -254,6 +263,7 @@ pub fn resolve_tool_paths(tools_dir: &Path, o: &PathOverrides) -> ToolPaths {
         hlae_exe,
         hlae_dll,
         ffmpeg_exe,
+        ffmpeg_amd_exe,
     }
 }
 

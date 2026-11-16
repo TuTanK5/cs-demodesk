@@ -105,4 +105,4 @@ cargo test -p demodesk-core --lib render::setup::tests::real_ffmpeg_install -- -
 
 DLL additions, changes and removals invalidate the cached FFmpeg startup check.
 Use the installed executable with the checks in [video encoding](video-encoding.md)
-to exercise CPU and NVIDIA encoding.
+to exercise CPU, NVIDIA and AMD AMF encoding.

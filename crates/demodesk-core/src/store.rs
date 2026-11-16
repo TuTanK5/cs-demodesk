@@ -34,6 +34,7 @@ pub struct Settings {
     /// Tool parent folders; legacy executable paths remain readable. JSON keys stay compatible.
     pub hlae_exe: Option<String>,
     pub ffmpeg_exe: Option<String>,
+    pub ffmpeg_amd_exe: Option<String>,
     pub vrf_exe: Option<String>,
 }
 
@@ -47,6 +48,7 @@ impl Default for Settings {
             scan_game_replays: true,
             hlae_exe: None,
             ffmpeg_exe: None,
+            ffmpeg_amd_exe: None,
             vrf_exe: None,
         }
     }
@@ -59,6 +61,7 @@ impl Settings {
             &mut self.cs2_dir,
             &mut self.hlae_exe,
             &mut self.ffmpeg_exe,
+            &mut self.ffmpeg_amd_exe,
             &mut self.vrf_exe,
         ] {
             if let Some(value) = field.take() {
@@ -84,6 +87,7 @@ impl Settings {
         trim(&mut self.steam_dir);
         trim(&mut self.hlae_exe);
         trim(&mut self.ffmpeg_exe);
+        trim(&mut self.ffmpeg_amd_exe);
         trim(&mut self.vrf_exe);
         self.replay_folders = self
             .replay_folders

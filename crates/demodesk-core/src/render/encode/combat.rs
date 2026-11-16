@@ -284,6 +284,25 @@ pub(super) fn encode(
                         args.push(path.to_string_lossy().into_owned());
                         run_progress(ffmpeg, &args, part_seconds, &mut report, control)
                     })?;
+                } else if codec.contains("amf") {
+                    with_amf_fallback(compatible, |_fallback| {
+                        let mut args = common.clone();
+                        args.extend([
+                            s("-maxrate"),
+                            format!("{}k", rate * 2),
+                            s("-force_key_frames"),
+                            s("expr:gte(t,n_forced*2)"),
+                        ]);
+                        if !is_av1(codec) {
+                            args.extend([
+                                s("-profile:v"),
+                                s(if is_hevc(codec) { "main" } else { "high" }),
+                            ]);
+                        }
+                        args.extend(tag_args(codec));
+                        args.push(path.to_string_lossy().into_owned());
+                        run_progress(ffmpeg, &args, part_seconds, &mut report, control)
+                    })?;
                 } else {
                     common.extend([s("-preset"), s(cpu_size_preset(codec))]);
                     if codec == "libsvtav1" {
@@ -479,7 +498,9 @@ mod tests {
         .unwrap();
         let windows = [[0.317, 0.91], [1.117, 2.15]];
         for (codec, _) in CODECS {
-            if codec.contains("nvenc") && std::env::var_os("TEST_NVENC").is_none() {
+            if (codec.contains("nvenc") && std::env::var_os("TEST_NVENC").is_none())
+                || (codec.contains("amf") && std::env::var_os("TEST_AMF").is_none())
+            {
                 continue;
             }
             let max_size_mb = if codec == "libx265" {

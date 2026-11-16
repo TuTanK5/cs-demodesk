@@ -15,7 +15,12 @@ use std::time::{Duration, Instant};
 
 mod transport;
 
-const FFMPEG_REPO: &str = "noih/cs-demodesk-ffmpeg";
+const FFMPEG_REPO: &str = "TuTanK5/cs-demodesk-ffmpeg";
+const FFMPEG_RELEASE: &str = "N-128915-g3d16b774d7-e9c180c0";
+const FFMPEG_URL: &str = "https://github.com/TuTanK5/cs-demodesk-ffmpeg/releases/download/N-128915-g3d16b774d7-e9c180c0/cs-demodesk-ffmpeg-win64-gpl-shared.zip";
+const FFMPEG_DIGEST: &str = "sha256:1f7a3973cad463cf6718887b290ee9acd2a68271787dac2c7fe26c7c7b3669d4";
+const FFMPEG_AMD_URL: &str = "https://github.com/TuTanK5/cs-demodesk-ffmpeg/releases/download/N-128915-g3d16b774d7-e9c180c0/cs-demodesk-ffmpeg-win64-gpl-shared-amd.zip";
+const FFMPEG_AMD_DIGEST: &str = "sha256:5eb21e60619d797279685b03ebebcb40a145e61bf2cbcd0e58c356364ca46ac4";
 
 pub struct Progress<'a> {
     pub cancel: &'a Arc<AtomicBool>,
@@ -255,6 +260,12 @@ pub(crate) fn recover_installs(tools_dir: &Path, overrides: &super::paths::PathO
             ffmpeg_installed,
         ),
         (
+            "ffmpeg-amd",
+            &overrides.ffmpeg_amd_exe,
+            FFMPEG_REPO,
+            ffmpeg_installed,
+        ),
+        (
             "vrf",
             &overrides.vrf_exe,
             "ValveResourceFormat/ValveResourceFormat",
@@ -412,7 +423,7 @@ fn finish_pending(
             if log.before_replace.is_some() {
                 let names: &[&str] = if pending.url.contains("/advancedfx/advancedfx/") {
                     &["HLAE.exe", "cs2.exe"]
-                } else if pending.url.contains("/noih/cs-demodesk-ffmpeg/")
+                } else if pending.url.contains("/cs-demodesk-ffmpeg/")
                     || pending.url.contains("/BtbN/FFmpeg-Builds/")
                 {
                     &["ffmpeg.exe", "ffprobe.exe"]
@@ -494,7 +505,7 @@ fn install_archive_with_replace(
             dir.display()
         ));
     }
-    if url.ends_with("-win64-gpl-shared.zip") {
+    if url.ends_with("-win64-gpl-shared.zip") || url.ends_with("-win64-gpl-shared-amd.zip") {
         let exe = super::paths::find_file(&staged, "ffmpeg.exe", 4)
             .ok_or_else(|| anyhow!("shared FFmpeg archive is missing ffmpeg.exe"))?;
         for path in [&exe, &exe.with_file_name("ffprobe.exe")] {
@@ -622,6 +633,7 @@ fn ffmpeg_installed(dir: &Path) -> bool {
     })
 }
 
+#[cfg(test)]
 fn ffmpeg_asset(release: &GithubRelease) -> Result<&GithubAsset> {
     unique_asset(
         release,
@@ -630,14 +642,37 @@ fn ffmpeg_asset(release: &GithubRelease) -> Result<&GithubAsset> {
     )
 }
 
+#[cfg(test)]
+fn ffmpeg_amd_asset(release: &GithubRelease) -> Result<&GithubAsset> {
+    unique_asset(
+        release,
+        |name| name == "cs-demodesk-ffmpeg-win64-gpl-shared-amd.zip",
+        "DemoDesk shared win64 GPL FFmpeg AMD ZIP",
+    )
+}
+
 pub fn install_ffmpeg(directory: &Path, force: bool, log: Log) -> Result<PathBuf> {
+    install_fixed_ffmpeg(directory, force, FFMPEG_URL, FFMPEG_DIGEST, log)
+}
+
+pub fn install_ffmpeg_amd(directory: &Path, force: bool, log: Log) -> Result<PathBuf> {
+    install_fixed_ffmpeg(directory, force, FFMPEG_AMD_URL, FFMPEG_AMD_DIGEST, log)
+}
+
+fn install_fixed_ffmpeg(
+    directory: &Path,
+    force: bool,
+    url: &str,
+    digest: &str,
+    log: Log,
+) -> Result<PathBuf> {
     let dir = directory.to_path_buf();
     validate_install_directory(&dir, FFMPEG_REPO, ffmpeg_installed, force)?;
-    if !force && ffmpeg_installed(&dir) {
-        return Ok(dir);
-    }
+    if !force && ffmpeg_installed(&dir) { return Ok(dir); }
     validate_install_directory(&dir, FFMPEG_REPO, ffmpeg_installed, true)?;
-    install_release(FFMPEG_REPO, &dir, ffmpeg_asset, ffmpeg_installed, log)?;
+    if !resume_install(&dir, ffmpeg_installed, log)? {
+        install_zip(&dir, url, FFMPEG_RELEASE, digest, ffmpeg_installed, log)?;
+    }
     Ok(dir)
 }
 
@@ -651,7 +686,11 @@ fn release_for_tool(
     let mut errors = Vec::new();
     for source in sources {
         log.check()?;
-        let url = format!("https://api.github.com/repos/{repo}/releases/{source}");
+        let url = if repo == FFMPEG_REPO {
+            format!("https://api.github.com/repos/{repo}/releases/tags/{FFMPEG_RELEASE}")
+        } else {
+            format!("https://api.github.com/repos/{repo}/releases/{source}")
+        };
         let fetched: Result<GithubRelease> = (|| {
             let release = transport::agent(log.cancel.clone())
                 .get(&url)
@@ -813,7 +852,7 @@ fn probe_stdout(exe: &Path, flag: &str) -> Option<String> {
 fn installed_version(tool: super::SetupTool, exe: &Path) -> Option<String> {
     match tool {
         super::SetupTool::Hlae => file_version(exe),
-        super::SetupTool::Ffmpeg => installed_release_tag(exe)
+        super::SetupTool::Ffmpeg | super::SetupTool::FfmpegAmd => installed_release_tag(exe)
             .or_else(|| ffmpeg_banner_version(&probe_stdout(exe, "-version")?)),
         super::SetupTool::Vrf => vrf_banner_version(&probe_stdout(exe, "--version")?),
     }
@@ -832,7 +871,7 @@ pub struct ToolUpdate {
 fn latest_version(tool: super::SetupTool) -> Result<String> {
     let repo = match tool {
         super::SetupTool::Hlae => "advancedfx/advancedfx",
-        super::SetupTool::Ffmpeg => FFMPEG_REPO,
+        super::SetupTool::Ffmpeg | super::SetupTool::FfmpegAmd => FFMPEG_REPO,
         super::SetupTool::Vrf => "ValveResourceFormat/ValveResourceFormat",
     };
     let url = format!("https://github.com/{repo}/releases/latest");
@@ -982,7 +1021,8 @@ mod tests {
         let paths = super::super::paths::resolve_tool_paths(&root, &Default::default());
         for tool in [
             super::super::SetupTool::Hlae,
-            super::super::SetupTool::Ffmpeg,
+        super::super::SetupTool::Ffmpeg,
+        super::super::SetupTool::FfmpegAmd,
             super::super::SetupTool::Vrf,
         ] {
             let Some(exe) = super::super::diagnostics::executable(&paths, tool) else {

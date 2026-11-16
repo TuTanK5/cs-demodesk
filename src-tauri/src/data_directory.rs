@@ -199,6 +199,7 @@ impl DataDirectory {
             &settings.cs2_dir,
             &settings.hlae_exe,
             &settings.ffmpeg_exe,
+            &settings.ffmpeg_amd_exe,
             &settings.vrf_exe,
         ]
         .into_iter()
@@ -788,7 +789,7 @@ mod tests {
             assert!(external.join("original.dem").exists());
             let clean = demodesk_core::store::Store::settings_at(&target).unwrap();
             assert!(
-                clean.hlae_exe.is_none() && clean.ffmpeg_exe.is_none() && clean.vrf_exe.is_none()
+                clean.hlae_exe.is_none() && clean.ffmpeg_exe.is_none() && clean.ffmpeg_amd_exe.is_none() && clean.vrf_exe.is_none()
             );
             assert_eq!(external.parent(), Some(test_base().as_path()));
             fs::remove_dir_all(external).unwrap();
@@ -869,6 +870,7 @@ mod tests {
             "cs2Dir",
             "hlaeExe",
             "ffmpegExe",
+            "ffmpegAmdExe",
             "vrfExe",
             "replayFolders",
         ] {

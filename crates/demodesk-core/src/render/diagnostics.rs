@@ -34,6 +34,7 @@ pub fn executable(paths: &ToolPaths, tool: SetupTool) -> Option<&PathBuf> {
     match tool {
         SetupTool::Hlae => paths.hlae_exe.as_ref(),
         SetupTool::Ffmpeg => paths.ffmpeg_exe.as_ref(),
+        SetupTool::FfmpegAmd => paths.ffmpeg_amd_exe.as_ref(),
         SetupTool::Vrf => paths.vrf_exe.as_ref(),
     }
 }
@@ -43,7 +44,7 @@ pub fn fingerprint(paths: &ToolPaths, tool: SetupTool) -> Fingerprint {
     if let Some(exe) = files.first() {
         if tool == SetupTool::Hlae {
             files.push(exe.parent().unwrap().join("x64/AfxHookSource2.dll"));
-        } else if tool == SetupTool::Ffmpeg {
+        } else if matches!(tool, SetupTool::Ffmpeg | SetupTool::FfmpegAmd) {
             let bin = exe.parent().unwrap().to_path_buf();
             files.push(exe.with_file_name(if cfg!(windows) {
                 "ffprobe.exe"
@@ -160,7 +161,7 @@ pub fn check(paths: &ToolPaths, tool: SetupTool) -> ToolCheck {
         SetupTool::Hlae => {
             command.args(["-customLoader", "-noGui", "-noConfig"]);
         }
-        SetupTool::Ffmpeg => {
+        SetupTool::Ffmpeg | SetupTool::FfmpegAmd => {
             command.arg("-version");
         }
         SetupTool::Vrf => {
@@ -174,7 +175,7 @@ pub fn check(paths: &ToolPaths, tool: SetupTool) -> ToolCheck {
             result.ok = status.is_some_and(|s| s.success());
             result.actual_version = match tool {
                 SetupTool::Hlae => result.actual_version,
-                SetupTool::Ffmpeg => super::setup::ffmpeg_banner_version(&stdout)
+                SetupTool::Ffmpeg | SetupTool::FfmpegAmd => super::setup::ffmpeg_banner_version(&stdout)
                     .or_else(|| super::setup::ffmpeg_banner_version(&stderr)),
                 SetupTool::Vrf => super::setup::vrf_banner_version(&stdout)
                     .or_else(|| super::setup::vrf_banner_version(&stderr)),
@@ -202,7 +203,7 @@ pub fn current_version(paths: &ToolPaths, tool: SetupTool) -> serde_json::Value 
             return super::setup::file_version(path)
                 .ok_or("Executable version metadata unavailable".into());
         }
-        let flag = if tool == SetupTool::Ffmpeg {
+        let flag = if matches!(tool, SetupTool::Ffmpeg | SetupTool::FfmpegAmd) {
             "-version"
         } else {
             "--version"
@@ -219,7 +220,7 @@ pub fn current_version(paths: &ToolPaths, tool: SetupTool) -> serde_json::Value 
                 status.code()
             ));
         }
-        let parse = if tool == SetupTool::Ffmpeg {
+        let parse = if matches!(tool, SetupTool::Ffmpeg | SetupTool::FfmpegAmd) {
             super::setup::ffmpeg_banner_version
         } else {
             super::setup::vrf_banner_version
@@ -497,7 +498,7 @@ mod tests {
         cached.encoding = Some(encoding::check(None));
         let advisory = tool_report(&paths, SetupTool::Hlae, Some(&cached));
         assert_eq!(advisory["lastCheck"]["ok"], true);
-        assert_eq!(advisory["lastCheck"]["encoding"]["results"].as_array().unwrap().len(), 6);
+        assert_eq!(advisory["lastCheck"]["encoding"]["results"].as_array().unwrap().len(), 9);
         assert_eq!(advisory["lastCheck"]["encoding"]["results"][0]["status"], "skipped");
         cached.encoding = None;
 

@@ -129,6 +129,8 @@ pub fn clean_leftovers(tools_dir: &Path, o: &PathOverrides) -> bool {
 pub enum SetupTool {
     Hlae,
     Ffmpeg,
+    #[serde(rename = "ffmpegAmd")]
+    FfmpegAmd,
     Vrf,
 }
 
@@ -159,6 +161,17 @@ pub fn run_setup(
                     .map(paths::installation_directory)
                     .unwrap_or_else(|| tools_dir.to_path_buf())
                     .join("ffmpeg"),
+                force,
+                log,
+            )?;
+        }
+        SetupTool::FfmpegAmd => {
+            setup::install_ffmpeg_amd(
+                &o.ffmpeg_amd_exe
+                    .as_deref()
+                    .map(paths::installation_directory)
+                    .unwrap_or_else(|| tools_dir.to_path_buf())
+                    .join("ffmpeg-amd"),
                 force,
                 log,
             )?;
@@ -570,15 +583,22 @@ pub fn render_highlights(input: RenderJobInput) -> Result<RenderResult> {
         stage,
         progress,
     } = input;
-    let (Some(cs2_dir), Some(cs2_exe), Some(hlae_exe), Some(hlae_dll), Some(ffmpeg_exe)) = (
+    let (Some(cs2_dir), Some(cs2_exe), Some(hlae_exe), Some(hlae_dll)) = (
         tools.cs2_dir.clone(),
         tools.cs2_exe.clone(),
         tools.hlae_exe.clone(),
         tools.hlae_dll.clone(),
-        tools.ffmpeg_exe.clone(),
     ) else {
         return Err(ErrorCode::ToolsMissing.into());
     };
+    // AMD AMF encoders need the AMD-enabled build; all CPU/NVIDIA encoders
+    // use the smaller generic build.  Keep the choice tied to the export
+    // option so queued jobs remain deterministic.
+    let ffmpeg_exe = if o.codec.contains("_amf") {
+        tools.ffmpeg_amd_exe.clone()
+    } else {
+        tools.ffmpeg_exe.clone()
+    }.ok_or(ErrorCode::ToolsMissing)?;
     let ffmpeg = &ffmpeg_exe;
     if !demo_path.is_file() {
         return Err(

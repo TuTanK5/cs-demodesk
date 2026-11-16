@@ -187,7 +187,7 @@ async fn get_status(engine: State<'_, Eng>) -> CmdResult<Status> {
         if d.paths.hlae_exe.is_none() || d.paths.hlae_dll.is_none() {
             missing_render_tools.push("HLAE");
         }
-        if d.paths.ffmpeg_exe.is_none() {
+        if d.paths.ffmpeg_exe.is_none() && d.paths.ffmpeg_amd_exe.is_none() {
             missing_render_tools.push("ffmpeg");
         }
         Ok(Status {
@@ -232,7 +232,7 @@ fn validate_settings(engine: &Engine, settings: &Settings) -> Vec<String> {
         Err(error) => problems.push(error),
         Ok(false) => {}
     }
-    for path in [&settings.hlae_exe, &settings.ffmpeg_exe, &settings.vrf_exe]
+    for path in [&settings.hlae_exe, &settings.ffmpeg_exe, &settings.ffmpeg_amd_exe, &settings.vrf_exe]
         .into_iter()
         .flatten()
     {

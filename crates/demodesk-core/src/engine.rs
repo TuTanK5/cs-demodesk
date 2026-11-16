@@ -213,7 +213,7 @@ impl Engine {
         );
         // Nothing can be recording yet, so an old plugin install is a leftover.
         engine.clean_leftovers();
-        for tool in [SetupTool::Hlae, SetupTool::Ffmpeg, SetupTool::Vrf] {
+        for tool in [SetupTool::Hlae, SetupTool::Ffmpeg, SetupTool::FfmpegAmd, SetupTool::Vrf] {
             let journal = engine.tools_dir().join(format!(".install-{tool:?}.json"));
             let workspace = std::fs::read(&journal)
                 .ok()
@@ -654,6 +654,7 @@ impl Engine {
             cs2_dir: p(&s.cs2_dir),
             hlae_exe: p(&s.hlae_exe),
             ffmpeg_exe: p(&s.ffmpeg_exe),
+            ffmpeg_amd_exe: p(&s.ffmpeg_amd_exe),
             vrf_exe: p(&s.vrf_exe),
         }
     }
@@ -709,7 +710,7 @@ impl Engine {
                 ));
             }
         }
-        for path in [&o.hlae_exe, &o.ffmpeg_exe, &o.vrf_exe]
+        for path in [&o.hlae_exe, &o.ffmpeg_exe, &o.ffmpeg_amd_exe, &o.vrf_exe]
             .into_iter()
             .flatten()
         {
@@ -1470,7 +1471,7 @@ impl Engine {
     }
     pub fn check_tools(&self) {
         let _guard = self.tool_check_lock.lock().unwrap();
-        for tool in [SetupTool::Hlae, SetupTool::Ffmpeg, SetupTool::Vrf] {
+        for tool in [SetupTool::Hlae, SetupTool::Ffmpeg, SetupTool::FfmpegAmd, SetupTool::Vrf] {
             if self
                 .setup
                 .lock()
@@ -1483,7 +1484,7 @@ impl Engine {
             let _tools = self.tool_access.use_tools(&[tool]);
             let paths = self.tool_paths();
             let mut check = crate::render::diagnostics::check(&paths, tool);
-            if tool == SetupTool::Ffmpeg {
+            if matches!(tool, SetupTool::Ffmpeg | SetupTool::FfmpegAmd) {
                 check.encoding = Some(crate::render::diagnostics::encoding::check(paths.ffmpeg_exe.as_deref()));
             }
             self.tool_checks.lock().unwrap().insert(tool, check);
@@ -1507,6 +1508,7 @@ impl Engine {
         let tools: serde_json::Map<String, serde_json::Value> = [
             ("hlae", SetupTool::Hlae),
             ("ffmpeg", SetupTool::Ffmpeg),
+            ("ffmpegAmd", SetupTool::FfmpegAmd),
             ("vrf", SetupTool::Vrf),
         ]
         .into_iter()
@@ -1615,12 +1617,14 @@ impl Engine {
             let previous_selection = match tool {
                 SetupTool::Hlae => settings.hlae_exe.clone(),
                 SetupTool::Ffmpeg => settings.ffmpeg_exe.clone(),
+                SetupTool::FfmpegAmd => settings.ffmpeg_amd_exe.clone(),
                 SetupTool::Vrf => settings.vrf_exe.clone(),
             };
             let mut overrides = engine.overrides(&settings);
             match tool {
                 SetupTool::Hlae => overrides.hlae_exe = directory.clone(),
                 SetupTool::Ffmpeg => overrides.ffmpeg_exe = directory.clone(),
+                SetupTool::FfmpegAmd => overrides.ffmpeg_amd_exe = directory.clone(),
                 SetupTool::Vrf => overrides.vrf_exe = directory.clone(),
             }
             let mut log = |line: String| {
@@ -1674,6 +1678,7 @@ impl Engine {
                 let current = match tool {
                     SetupTool::Hlae => &mut settings.hlae_exe,
                     SetupTool::Ffmpeg => &mut settings.ffmpeg_exe,
+                    SetupTool::FfmpegAmd => &mut settings.ffmpeg_amd_exe,
                     SetupTool::Vrf => &mut settings.vrf_exe,
                 };
                 if *current == previous_selection {
@@ -1953,7 +1958,7 @@ impl Engine {
     fn run_job(self: &Arc<Self>, mut job: RenderJob) {
         let _tools = self
             .tool_access
-            .use_tools(&[SetupTool::Hlae, SetupTool::Ffmpeg]);
+            .use_tools(&[SetupTool::Hlae, SetupTool::Ffmpeg, SetupTool::FfmpegAmd]);
         // Serialize claiming a queued job with demo removal, including already-dequeued jobs.
         let guard = self.data_lock.lock().unwrap();
         if !self
@@ -2471,6 +2476,10 @@ mod tests {
                 SetupTool::Ffmpeg => {
                     expected.ffmpeg_exe = None;
                     assert!(paths.ffmpeg_exe.unwrap().starts_with(engine.tools_dir()));
+                }
+                SetupTool::FfmpegAmd => {
+                    expected.ffmpeg_amd_exe = None;
+                    assert!(paths.ffmpeg_amd_exe.unwrap().starts_with(engine.tools_dir()));
                 }
                 SetupTool::Vrf => {
                     expected.vrf_exe = None;

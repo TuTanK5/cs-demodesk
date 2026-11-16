@@ -360,21 +360,24 @@ pub struct SizeResult {
 }
 
 /// Video codecs we know how to drive: (ffmpeg encoder name, label).
-pub const CODECS: [(&str, &str); 6] = [
+pub const CODECS: [(&str, &str); 9] = [
     ("libsvtav1", "AV1 CPU"),
     ("av1_nvenc", "AV1 NVIDIA"),
-    ("libx264", "H.264 CPU"),
-    ("libx265", "H.265 CPU"),
     ("h264_nvenc", "H.264 NVIDIA"),
     ("hevc_nvenc", "H.265 NVIDIA"),
+    ("h264_amf", "H.264 AMD (AMF)"),
+    ("hevc_amf", "H.265 AMD (AMF)"),
+    ("av1_amf", "AV1 AMD (AMF)"),
+    ("libx264", "H.264 CPU"),
+    ("libx265", "H.265 CPU"),
 ];
 
 fn is_hevc(codec: &str) -> bool {
-    codec == "libx265" || codec == "hevc_nvenc"
+    codec == "libx265" || codec == "hevc_nvenc" || codec == "hevc_amf"
 }
 
 fn is_av1(codec: &str) -> bool {
-    matches!(codec, "libsvtav1" | "av1_nvenc")
+    matches!(codec, "libsvtav1" | "av1_nvenc" | "av1_amf")
 }
 
 const AV1_PARAMS: &str = "tune=0:enable-tf=1:lp=6";
@@ -382,7 +385,7 @@ const AV1_PARAMS: &str = "tune=0:enable-tf=1:lp=6";
 fn pixel_format(codec: &str) -> &'static str {
     match codec {
         "libsvtav1" => "yuv420p10le",
-        "av1_nvenc" => "p010le",
+        "av1_nvenc" | "av1_amf" => "p010le",
         _ => "yuv420p",
     }
 }
@@ -438,6 +441,31 @@ fn with_nvenc_fallback<T>(
     }
 }
 
+fn with_amf_fallback<T>(
+    compatible: &mut bool,
+    mut encode: impl FnMut(bool) -> Result<T>,
+) -> Result<T> {
+    match encode(*compatible) {
+        Ok(value) => Ok(value),
+        Err(first)
+            if !*compatible
+                && !stalled(&first)
+                && ErrorCode::classify(&first, ErrorCode::EncodingFailed)
+                    != ErrorCode::ExportCancelled
+                && first.to_string() != "cancelled" =>
+        {
+            *compatible = true;
+            eprintln!("AMF failed; retrying with compatibility settings: {first:#}");
+            encode(true).map_err(|last| {
+                last.context(format!(
+                    "AMF failed: {first:#}; compatibility retry failed"
+                ))
+            })
+        }
+        Err(error) => Err(error),
+    }
+}
+
 /// Probe the actual capture format before launching the game, with one compatibility retry.
 pub fn checked_record_preset(
     ffmpeg: &Path,
@@ -446,7 +474,10 @@ pub fn checked_record_preset(
     cancel: &AtomicBool,
 ) -> Result<(String, bool)> {
     let preset = record_preset(&options.codec, options.crf, options.fps);
-    if !options.codec.contains("nvenc") && options.codec != "libsvtav1" {
+    if !options.codec.contains("nvenc")
+        && !options.codec.contains("amf")
+        && options.codec != "libsvtav1"
+    {
         return Ok((preset, false));
     }
     let mut compatible = false;
@@ -486,11 +517,16 @@ pub fn checked_record_preset(
     };
     let selected = if options.codec.contains("nvenc") {
         with_nvenc_fallback(&mut compatible, check)?
+    } else if options.codec.contains("amf") {
+        with_amf_fallback(&mut compatible, check)?
     } else {
         check(false)?
     };
     if compatible {
-        log("NVENC: using compatibility settings (B-frames, AQ and multipass disabled)".into());
+        log(format!(
+            "{}: using compatibility settings",
+            if options.codec.contains("amf") { "AMF" } else { "NVENC" }
+        ));
     }
     Ok((selected, compatible))
 }
@@ -515,6 +551,18 @@ pub fn record_preset(codec: &str, crf: u32, fps: u32) -> String {
                 ""
             } else if is_hevc(codec) {
                 "-profile:v main -b_ref_mode middle"
+            } else {
+                "-profile:v high"
+            }
+        ));
+    } else if codec.contains("amf") {
+        parts.push(format!(
+            "-qp {crf} -b:v 0 -bf 0 -g {} {}",
+            u64::from(fps) * 2,
+            if is_av1(codec) {
+                ""
+            } else if is_hevc(codec) {
+                "-profile:v main"
             } else {
                 "-profile:v high"
             }
@@ -697,6 +745,40 @@ pub fn encode_to_size_with_progress(
                     }
                     if !fallback {
                         args.extend([s("-b_ref_mode"), s("middle")]);
+                    }
+                    args.push(output_s.clone());
+                    run_progress(
+                        ffmpeg_exe,
+                        &args,
+                        seconds,
+                        &mut |p| {
+                            reported = reported.max(start + span * p);
+                            progress(reported);
+                        },
+                        control,
+                    )
+                })?;
+            } else if codec.contains("amf") {
+                with_amf_fallback(compatible, |_fallback| {
+                    let mut args = common.clone();
+                    args.extend([
+                        s("-c:v"),
+                        s(codec),
+                        s("-rc"),
+                        s("vbr"),
+                        s("-b:v"),
+                        format!("{bitrate}k"),
+                        s("-maxrate"),
+                        format!("{}k", u64::from(bitrate) * 2),
+                        s("-bufsize"),
+                        format!("{}k", u64::from(bitrate) * 2),
+                    ]);
+                    args.extend([s("-force_key_frames"), s("expr:gte(t,n_forced*2)")]);
+                    if !is_av1(codec) {
+                        args.extend([
+                            s("-profile:v"),
+                            s(if is_hevc(codec) { "main" } else { "high" }),
+                        ]);
                     }
                     args.push(output_s.clone());
                     run_progress(
@@ -1166,6 +1248,8 @@ mod tests {
             assert!(preset.contains(&format!("-c:v {codec}")));
             assert!(preset.contains(if codec.contains("nvenc") {
                 "-rc constqp -qp 20"
+            } else if codec.contains("amf") {
+                "-qp 20 -b:v 0"
             } else {
                 "-crf 20"
             }));
@@ -1454,7 +1538,9 @@ mod tests {
             .to_string_lossy()
             .starts_with("encode-")));
         for (codec, _) in CODECS {
-            if codec.contains("nvenc") && std::env::var_os("TEST_NVENC").is_none() {
+            if (codec.contains("nvenc") && std::env::var_os("TEST_NVENC").is_none())
+                || (codec.contains("amf") && std::env::var_os("TEST_AMF").is_none())
+            {
                 continue;
             }
             let output = dir.path().join(format!("{codec}.mp4"));

@@ -257,7 +257,7 @@ export interface RenderOptions {
   audioKbps: number;
   extraLaunchOptions: string[];
 }
-export const RENDER_QUALITY: Record<string, number> = { libsvtav1: 20, av1_nvenc: 20, libx264: 19, libx265: 20, h264_nvenc: 20, hevc_nvenc: 20 };
+export const RENDER_QUALITY: Record<string, number> = { libsvtav1: 20, av1_nvenc: 20, av1_amf: 20, libx264: 19, libx265: 20, h264_nvenc: 20, hevc_nvenc: 20, h264_amf: 20, hevc_amf: 20 };
 
 export const DEFAULT_RENDER_OPTIONS: RenderOptions = {
   utilityTeamwork: false,
@@ -361,6 +361,7 @@ export interface ToolPaths {
   hlaeExe?: string;
   hlaeDll?: string;
   ffmpegExe?: string;
+  ffmpegAmdExe?: string;
   vrfExe?: string;
 }
 export interface DoctorReport {
@@ -377,6 +378,7 @@ export interface Settings {
   scanGameReplays: boolean;
   hlaeExe: string | null;
   ffmpegExe: string | null;
+  ffmpegAmdExe: string | null;
   vrfExe: string | null;
 }
 export interface EncodingReport {
@@ -399,14 +401,14 @@ export interface ToolCheck {
 }
 export interface ToolUpdate { installed: string | null; latest: string }
 export interface SettingsResponse {
-  toolChecks: Partial<Record<'hlae' | 'ffmpeg' | 'vrf', ToolCheck>>;
+  toolChecks: Partial<Record<'hlae' | 'ffmpeg' | 'ffmpegAmd' | 'vrf', ToolCheck>>;
   dataDirOverride: string | null;
   defaultDataDir: string;
   restartRequired: boolean;
   settings: Settings;
   detected: { steamDir?: string; cs2Dir?: string; replaysDir?: string };
   doctor: DoctorReport;
-  setup: Partial<Record<'hlae' | 'ffmpeg' | 'vrf', { running: boolean; stopping?: boolean; log: string[]; progress: string | null }>>;
+  setup: Partial<Record<'hlae' | 'ffmpeg' | 'ffmpegAmd' | 'vrf', { running: boolean; stopping?: boolean; log: string[]; progress: string | null }>>;
   dataDir: string;
 }
 export interface StorageBytes {
@@ -436,8 +438,8 @@ export type AppEvent =
   | { type: 'scoring-progress'; id: string; step: ScoringStep }
   | { type: 'demo-changed'; demo: DemoMeta }
   | { type: 'job-changed'; job: RenderJob }
-  | { type: 'setup-progress'; tool: 'hlae' | 'ffmpeg' | 'vrf'; progress: string }
-  | { type: 'setup-finished'; tool: 'hlae' | 'ffmpeg' | 'vrf'; ok: boolean; installed: boolean; cancelled: boolean; error: string | null };
+  | { type: 'setup-progress'; tool: 'hlae' | 'ffmpeg' | 'ffmpegAmd' | 'vrf'; progress: string }
+  | { type: 'setup-finished'; tool: 'hlae' | 'ffmpeg' | 'ffmpegAmd' | 'vrf'; ok: boolean; installed: boolean; cancelled: boolean; error: string | null };
 
 export type AssessmentState = 'passed' | 'findings' | 'unavailable' | 'failed';
 export interface MatchAssessment {
@@ -490,11 +492,11 @@ export const api = {
   settings: () => invoke<SettingsResponse>('get_settings'),
   previewSettings: (settings: Settings, originalSettings: Settings, dataDirOverride: string | null) => invoke<{ target: string; restartRequired: boolean }>('preview_settings', { settings, originalSettings, dataDirOverride }),
   saveSettings: (settings: Settings, dataDirOverride: string | null, originalSettings: Settings, changeConfirmed = false) => invoke<SettingsResponse>('save_settings', { settings, originalSettings, dataDirOverride, changeConfirmed }),
-  runSetup: (tool: 'hlae' | 'ffmpeg' | 'vrf', force = false, directory: string | null = null) => invoke<boolean>('run_setup', { tool, force, directory }),
-  cancelSetup: (tool: 'hlae' | 'ffmpeg' | 'vrf') => invoke<void>('cancel_setup', { tool }),
+  runSetup: (tool: 'hlae' | 'ffmpeg' | 'ffmpegAmd' | 'vrf', force = false, directory: string | null = null) => invoke<boolean>('run_setup', { tool, force, directory }),
+  cancelSetup: (tool: 'hlae' | 'ffmpeg' | 'ffmpegAmd' | 'vrf') => invoke<void>('cancel_setup', { tool }),
   checkTools: () => invoke<SettingsResponse>('check_tools'),
   toolDiagnostics: () => invoke<string>('tool_diagnostics'),
-  checkToolUpdate: (tool: 'hlae' | 'ffmpeg' | 'vrf') => invoke<ToolUpdate>('check_tool_update', { tool }),
+  checkToolUpdate: (tool: 'hlae' | 'ffmpeg' | 'ffmpegAmd' | 'vrf') => invoke<ToolUpdate>('check_tool_update', { tool }),
   demos: () => invoke<DemoMeta[]>('list_demos'),
   registerDemo: (path: string) => invoke<DemoMeta>('register_demo', { path }),
   parse: (id: string) => invoke<void>('parse_demo', { id }),

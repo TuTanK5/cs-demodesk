@@ -125,13 +125,16 @@ export function ExportDialog({open,onOpenChange,count,seconds,status,onSetup,onS
                   <Select.Content>
                     <Select.Item value="libsvtav1">AV1 · CPU（libsvtav1）</Select.Item>
                     <Select.Item value="av1_nvenc">AV1 · NVIDIA（av1_nvenc）</Select.Item>
+                    <Select.Item value="av1_amf">AV1 · AMD（av1_amf）</Select.Item>
                     <Select.Item value="libx264">H.264 · CPU（libx264）</Select.Item>
                     <Select.Item value="h264_nvenc">H.264 · NVIDIA（h264_nvenc）</Select.Item>
+                    <Select.Item value="h264_amf">H.264 · AMD（h264_amf）</Select.Item>
                     <Select.Item value="libx265">H.265 · CPU（libx265）</Select.Item>
                     <Select.Item value="hevc_nvenc">H.265 · NVIDIA（hevc_nvenc）</Select.Item>
+                    <Select.Item value="hevc_amf">H.265 · AMD（hevc_amf）</Select.Item>
                   </Select.Content>
                 </Select.Root>
-                {(opts.codec === 'libsvtav1' || opts.codec === 'av1_nvenc') && <Text as="p" size="1" color="gray" mt="1">{t('highlights.av1Hint')}</Text>}
+                {(opts.codec === 'libsvtav1' || opts.codec === 'av1_nvenc' || opts.codec === 'av1_amf') && <Text as="p" size="1" color="gray" mt="1">{t('highlights.av1Hint')}</Text>}
               </Box>
               <Flex direction="column" gap="2" pt="3" style={{ borderTop: '1px solid var(--app-border)' }}>
                 <Text as="label" size="1">

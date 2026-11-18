@@ -371,6 +371,10 @@
       "trueView": "TrueView (client-side view)"
     },
     "playerKillFeedOnly": "Only show player-related kills",
+    "anonymizePlayerNames": "Anonymize player names",
+    "playerName": "Your player name",
+    "playerNamePlaceholder": "Name for your character (optional)",
+    "anonymizePlayerNamesHint": "Other players use CS2's neutral streamer names. Your name is applied to the local rendered identity.",
     "hudScale": "HUD scale {{n}}",
     "clips": "Clips",
     "notReady": "Rendering is not ready - download the tools in Settings first.",

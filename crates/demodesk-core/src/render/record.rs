@@ -23,6 +23,29 @@ use std::time::{Duration, Instant};
 
 pub const NETCON_PORT: u16 = 4577;
 
+const ANONYMIZED_PLAYER_NAMES: &[&str] = &[
+    "Beaver",
+    "Ferret",
+    "Otter",
+    "Badger",
+    "Fox",
+    "Wolf",
+    "Rabbit",
+    "Panda",
+    "Koala",
+    "Raccoon",
+    // "Moose",
+    // "Falcon",
+    // "Dolphin",
+    // "Penguin",
+    // "Lynx",
+    // "Owl",
+    // "Bison",
+    // "Hawk",
+    // "Tiger",
+    // "Cobra",
+];
+
 pub struct RecordSession<'a> {
     pub demo_path: PathBuf,
     pub cs2_dir: PathBuf,
@@ -47,6 +70,7 @@ pub struct RecordSession<'a> {
     pub log: &'a mut dyn FnMut(String),
     pub stage: &'a mut dyn FnMut(&str),
     pub progress: &'a mut dyn FnMut(f64),
+    pub name_replacements: Vec<(i32, String)>,
 }
 
 fn tasklist(image: &str, verbose: bool) -> String {
@@ -59,6 +83,62 @@ fn tasklist(image: &str, verbose: bool) -> String {
         .output()
         .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
         .unwrap_or_default()
+}
+
+pub(super) fn build_name_replacements(
+    players: &[crate::model::PlayerInfo],
+    pov_user_id: Option<i32>,
+    anonymize: bool,
+    pov_name: &str,
+) -> Vec<(i32, String)> {
+    let mut replacements = Vec::new();
+
+    if anonymize {
+        for (index, player) in players.iter().enumerate() {
+            let Some(user_id) = player.user_id else {
+                continue;
+            };
+
+            let name = ANONYMIZED_PLAYER_NAMES
+                .get(index)
+                .map(|name| name.to_string())
+                .unwrap_or_else(|| format!("Player {}", index + 1));
+
+            replacements.push((user_id, name));
+        }
+    }
+
+    let pov_name = sanitize_player_name(pov_name);
+
+    if let (Some(user_id), Some(name)) = (pov_user_id, pov_name) {
+        // Replace the generic name if this POV player was already anonymized.
+        if let Some((_, existing_name)) = replacements
+            .iter_mut()
+            .find(|(id, _)| *id == user_id)
+        {
+            *existing_name = name;
+        } else {
+            replacements.push((user_id, name));
+        }
+    }
+
+    replacements
+}
+
+fn sanitize_player_name(name: &str) -> Option<String> {
+    let name: String = name
+        .chars()
+        .filter(|c| !c.is_control() && *c != ';')
+        .take(32)
+        .collect();
+
+    let name = name.trim().to_string();
+
+    if name.is_empty() {
+        return None;
+    }
+
+    Some(name.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
 pub(super) fn is_process_running(image: &str) -> Result<bool> {
@@ -575,7 +655,7 @@ impl RecordSession<'_> {
     }
 
     /// Load the schedule into HLAE and start the demo.
-    fn start_demo(&mut self, con: &mut Netcon, schedule_file: &Path) -> Result<()> {
+    fn start_demo(&mut self, con: &mut Netcon, schedule_file: &Path, initialize_names: bool) -> Result<()> {
         let xml = schedule_file.to_string_lossy().replace('\\', "/");
         con.send("mirv_cmd clear")?;
         con.send(&format!("mirv_cmd load \"{xml}\""))?;
@@ -597,7 +677,45 @@ impl RecordSession<'_> {
         ));
         con.send("demo_ui_mode 0")?;
         self.playdemo(con)?;
+
+        if initialize_names && !self.name_replacements.is_empty() {
+            (self.log)("pausing demo to initialize player names".into());
+
+            // Pause immediately after starting playback.
+            con.send("demo_pause")?;
+
+            // Ensure the console has processed the pause command.
+            if !con.ping("demodesk_names_paused", Duration::from_secs(10))? {
+                return Err(anyhow!(
+                    "CS2 did not acknowledge the player-name initialization pause"
+                ));
+            }
+
+            (self.log)(format!(
+                "registering {} player-name replacements",
+                self.name_replacements.len()
+            ));
+
+            for (user_id, name) in &self.name_replacements {
+                con.send(&format!(
+                    "mirv_replace_name byUserId add {user_id} \"{name}\""
+                ))?;
+            }
+
+            // Ensure all replacement commands have been processed.
+            if !con.ping("demodesk_names_registered", Duration::from_secs(10))? {
+                return Err(anyhow!(
+                    "CS2 did not acknowledge player-name registration"
+                ));
+            }
+
+            con.send("demo_resume")?;
+
+            (self.log)("player-name replacements initialized; demo resumed".into());
+        }
+
         (self.log)("playdemo sent, waiting for the demo to start…".into());
+
         Ok(())
     }
 
@@ -706,6 +824,7 @@ pub(super) struct RecordingHost {
     hider: Option<GameWindowGuard>,
     started_at: std::time::SystemTime,
     hook_log: PathBuf,
+    names_initialized: bool,
 }
 impl RecordingHost {
     fn start(s: &mut RecordSession) -> Result<Self> {
@@ -738,6 +857,7 @@ impl RecordingHost {
                 hider,
                 started_at,
                 hook_log,
+                names_initialized: false,
             }),
             Err(error) => {
                 processes.finish()?;
@@ -792,8 +912,20 @@ pub(super) fn run_recording_pass(
             con.drain();
         }
         let active = host.as_mut().unwrap();
-        s.start_demo(&mut active.con, &schedule_file)
-            .map_err(|e| ErrorCode::DemoStartFailed.wrap(e))?;
+
+        let initialize_names = !active.names_initialized;
+
+        s.start_demo(
+            &mut active.con,
+            &schedule_file,
+            initialize_names,
+        )
+        .map_err(|e| ErrorCode::DemoStartFailed.wrap(e))?;
+
+        if initialize_names {
+            active.names_initialized = true;
+        }
+
         let followed = s.follow_markers(&mut active.con, keep_alive);
         if let Some(dump) = newest_crash_dump(&s.cs2_exe, active.started_at) {
             (s.log)(format!(
@@ -895,6 +1027,7 @@ mod tests {
             log: &mut log,
             stage: &mut stage,
             progress: &mut report,
+            name_replacements: vec![],
         };
         let mut progress = Progress::default();
         let before_settle = Instant::now();

@@ -4,7 +4,7 @@ import { EditingEffects, type EditingChoice } from './EditingEffects.tsx';
 import { DialogCloseButton } from './DialogCloseButton.tsx';
 import { summarizeHighlights } from '../highlightWindows.ts';
 import { useState, type ReactNode } from 'react';
-import { Box, Button, Dialog, Flex, Grid, SegmentedControl, Select, Slider, Switch, Text } from '@radix-ui/themes';
+import { Box, Button, Dialog, Flex, Grid, SegmentedControl, Select, Slider, Switch, Text, TextField } from '@radix-ui/themes';
 import { useTranslation } from 'react-i18next';
 import { api, errorText, DEFAULT_RENDER_OPTIONS, RENDER_QUALITY, type Highlight, type RenderOptions, type Status } from '../api.ts';
 const RESOLUTIONS = [
@@ -178,6 +178,18 @@ export function ExportDialog({open,onOpenChange,count,seconds,status,onSetup,onS
                   </Box>
                 ))}
               </Flex>
+              <Box pt="3" style={{ borderTop: '1px solid var(--app-border)' }}>
+                <Text as="label" size="1">
+                  <Flex align="center" justify="between" gap="3">
+                    <Text color="gray">{t('highlights.anonymizePlayerNames')}</Text>
+                    <Switch size="1" style={{ flexShrink: 0 }} checked={opts.anonymizePlayerNames} onCheckedChange={anonymizePlayerNames => setOpts({ ...opts, anonymizePlayerNames })} />
+                  </Flex>
+                </Text>
+                {opts.anonymizePlayerNames && <Flex direction="column" gap="2" mt="2">
+                  <TextField.Root size="1" value={opts.playerName} placeholder={t('highlights.playerNamePlaceholder')} aria-label={t('highlights.playerName')} onChange={e => setOpts({ ...opts, playerName: e.target.value })} />
+                  <Text size="1" color="gray">{t('highlights.anonymizePlayerNamesHint')}</Text>
+                </Flex>}
+              </Box>
               <Box>
                 <Text as="div" size="1" color="gray" mb="1">
                   {t('highlights.hudScale', { n: opts.hudScale.toFixed(2) })}

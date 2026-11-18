@@ -256,6 +256,8 @@ export interface RenderOptions {
   combatQualityPriority: boolean;
   audioKbps: number;
   extraLaunchOptions: string[];
+  anonymizePlayerNames: boolean;
+  playerName: string;
 }
 export const RENDER_QUALITY: Record<string, number> = { libsvtav1: 20, av1_nvenc: 20, libx264: 19, libx265: 20, h264_nvenc: 20, hevc_nvenc: 20, h264_amf: 20, hevc_amf: 20, av1_amf: 20 };
 
@@ -278,6 +280,8 @@ export const DEFAULT_RENDER_OPTIONS: RenderOptions = {
   killFeed: true,
   playerKillFeedOnly: false,
   playerAvatars: true,
+  anonymizePlayerNames: false,
+  playerName: '',
   chat: false,
   viewmodel: true,
   tracers: true,

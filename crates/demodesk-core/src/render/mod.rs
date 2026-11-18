@@ -230,6 +230,8 @@ pub struct RenderOptions {
     pub combat_quality_priority: bool,
     pub audio_kbps: u32,
     pub extra_launch_options: Vec<String>,
+    pub player_name: String,
+    pub anonymize_player_names: bool,
 }
 
 impl Default for RenderOptions {
@@ -274,6 +276,8 @@ impl Default for RenderOptions {
             combat_quality_priority: true,
             audio_kbps: 192,
             extra_launch_options: vec![],
+            player_name: String::new(),
+            anonymize_player_names: false,
         }
     }
 }
@@ -638,6 +642,18 @@ pub fn render_highlights(input: RenderJobInput) -> Result<RenderResult> {
         teams: team_plans,
     } = plan;
     let clips = to_render_clips(demo, &recording);
+    // All clips in this export are assumed to use the same POV player.
+    let pov_user_id = clips
+        .first()
+        .and_then(|clip| clip.slot)
+        .and_then(|slot| slot.checked_sub(1));
+
+    let name_replacements = record::build_name_replacements(
+        &demo.players,
+        pov_user_id,
+        o.anonymize_player_names,
+        &o.player_name,
+    );
     if o.kill_feed
         && o.player_kill_feed_only
         && clips
@@ -769,6 +785,7 @@ pub fn render_highlights(input: RenderJobInput) -> Result<RenderResult> {
             log: &mut *log,
             stage: &mut *stage,
             progress: &mut recording_progress,
+            name_replacements: name_replacements.clone(),
         };
         let recorded = record::run_recording_pass(&mut session, &mut recording_host, keep_alive)
             .map_err(|e| ErrorCode::RecordingFailed.wrap(e));
